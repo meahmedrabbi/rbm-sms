@@ -782,9 +782,6 @@ export class MessageController {
         `📱 **Range ${rangeNumber}** - ${countryIcon} ${countryName}\n\n` +
         `🎯 **Select Quantity**\n` +
         `Choose how many numbers you want to request from this range:\n\n` +
-        `� **Rate**: ~$0.00622 per number\n` +
-        `⏰ **Validity**: 24 hours\n` +
-        `⚠️ **Important**: Numbers will be shown only once!\n\n` +
         `🔢 **Available Quantities**:`;
 
       await this.bot.editMessageText(text, {
