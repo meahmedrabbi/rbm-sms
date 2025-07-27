@@ -119,7 +119,7 @@ export class EnhancedSmsService {
       if (!smsRequest) {
         return {
           success: false,
-          message: `❌ No active SMS request found for ${phoneNumber} on ${server}`
+          message: `🚫 No active SMS request found for ${phoneNumber} on ${server}`
         };
       }
 
@@ -172,7 +172,7 @@ export class EnhancedSmsService {
 
         return {
           success: true,
-          message: `✅ SMS received via ${server.toUpperCase()} and $0.50 charged`,
+          message: `✨ SMS received via ${server.toUpperCase()} and $0.50 charged`,
           smsContent: smsFromApi,
           charged: true
         };
@@ -181,7 +181,7 @@ export class EnhancedSmsService {
         // No SMS found
         return {
           success: false,
-          message: `📭 No SMS found for ${phoneNumber} on ${server.toUpperCase()}. No charges applied.`,
+          message: `⚠️ No SMS found for ${phoneNumber} on ${server.toUpperCase()}`,
           charged: false
         };
       }
@@ -190,7 +190,7 @@ export class EnhancedSmsService {
       this.logger.error('Error checking SMS via API:', error);
       return {
         success: false,
-        message: '❌ Error checking SMS. Please try again.'
+        message: '🚫 Error checking SMS. Please try again.'
       };
     }
   }
@@ -250,11 +250,11 @@ export class EnhancedSmsService {
       const data = responseData as SmsApiResponse[];
 
       // Search for SMS matching the phone number
-      const matchingSms = this.findMatchingSms(data, phoneNumber);
+      const matchingSmsMessages = this.findAllMatchingSms(data, phoneNumber);
       
-      if (matchingSms) {
-        this.logger.info(`SMS found via real API for ${phoneNumber}`);
-        return `From: ${matchingSms.sender}\nMessage: ${matchingSms.text}\nReceived: ${matchingSms.date}\nCountry: ${matchingSms.country}`;
+      if (matchingSmsMessages.length > 0) {
+        this.logger.info(`${matchingSmsMessages.length} SMS found via real API for ${phoneNumber}`);
+        return this.formatMultipleSmsContent(matchingSmsMessages);
       } else {
         this.logger.info(`No matching SMS found via real API for ${phoneNumber}`);
         return null;
@@ -270,7 +270,144 @@ export class EnhancedSmsService {
   }
 
   /**
-   * Find matching SMS in API response with time and efficiency optimization
+   * Format SMS content for display
+   */
+  private formatSmsContent(sms: SmsApiResponse): string {
+    return `📱 **From:** ${sms.sender}\n` +
+           `💬 **Message:** ${sms.text}\n` +
+           `📅 **Received:** ${sms.date}\n` +
+           `🌍 **Country:** ${sms.country}`;
+  }
+
+  /**
+   * Format multiple SMS contents for display
+   */
+  private formatMultipleSmsContent(smsMessages: SmsApiResponse[]): string {
+    if (smsMessages.length === 1) {
+      return this.formatSmsContent(smsMessages[0]);
+    }
+
+    let content = `📱 **Found ${smsMessages.length} SMS Messages:**\n\n`;
+    
+    smsMessages.forEach((sms, index) => {
+      content += `**Message ${index + 1}:**\n`;
+      content += `📱 **From:** ${sms.sender}\n`;
+      content += `💬 **Message:** ${sms.text}\n`;
+      content += `📅 **Received:** ${sms.date}\n`;
+      content += `🌍 **Country:** ${sms.country}`;
+      
+      if (index < smsMessages.length - 1) {
+        content += '\n\n─────────────────────\n\n';
+      }
+    });
+    
+    return content;
+  }
+
+  /**
+   * Find all matching SMS messages in API response
+   */
+  private findAllMatchingSms(smsData: SmsApiResponse[], phoneNumber: string): SmsApiResponse[] {
+    // Clean phone number for comparison - remove all non-digits
+    const cleanPhoneNumber = phoneNumber.replace(/[^\d]/g, '');
+    
+    this.logger.info(`Searching for all SMS with cleaned phone number: ${cleanPhoneNumber} (original: ${phoneNumber})`);
+    
+    // Sort by date descending (most recent first)
+    const sortedData = smsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    this.logger.info(`Checking ${sortedData.length} SMS records from API`);
+    
+    const matchingMessages: SmsApiResponse[] = [];
+    
+    // Search strategies for optimization
+    const strategies = [
+      // 1. Exact match (both numbers cleaned)
+      (sms: SmsApiResponse) => {
+        const smsNumber = sms.number.replace(/[^\d]/g, '');
+        const match = smsNumber === cleanPhoneNumber;
+        return match;
+      },
+      
+      // 2. Match without leading country code variations
+      (sms: SmsApiResponse) => {
+        const smsNumber = sms.number.replace(/[^\d]/g, '');
+        
+        // Try different combinations - common country code patterns
+        const variations = [
+          smsNumber === cleanPhoneNumber.slice(1), // Remove leading digit from input
+          smsNumber === cleanPhoneNumber.slice(2), // Remove 2 leading digits from input (like +1, +44)
+          smsNumber === cleanPhoneNumber.slice(3), // Remove 3 leading digits from input
+          cleanPhoneNumber === smsNumber.slice(1), // Remove leading digit from API number
+          cleanPhoneNumber === smsNumber.slice(2), // Remove 2 leading digits from API number
+          cleanPhoneNumber === smsNumber.slice(3), // Remove 3 leading digits from API number
+        ];
+        
+        return variations.some(v => v);
+      },
+      
+      // 3. Match last N digits (most significant for phone identification)
+      (sms: SmsApiResponse) => {
+        const smsNumber = sms.number.replace(/[^\d]/g, '');
+        
+        // Try matching last 8, 9, or 10 digits
+        const digitCounts = [10, 9, 8, 7];
+        
+        for (const count of digitCounts) {
+          if (smsNumber.length >= count && cleanPhoneNumber.length >= count) {
+            const smsLast = smsNumber.slice(-count);
+            const inputLast = cleanPhoneNumber.slice(-count);
+            
+            if (smsLast === inputLast) {
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      }
+    ];
+
+    // Apply strategies in order of precision and collect all matches
+    for (let i = 0; i < strategies.length; i++) {
+      const strategy = strategies[i];
+      const matches = sortedData.filter(strategy);
+      
+      // Add new matches to the result array (avoid duplicates)
+      matches.forEach(match => {
+        if (!matchingMessages.some(existing => 
+          existing.number === match.number && 
+          existing.date === match.date && 
+          existing.text === match.text
+        )) {
+          matchingMessages.push(match);
+          this.logger.info(`Match found using strategy ${i + 1}: ${match.number} -> ${match.text.substring(0, 50)}...`);
+        }
+      });
+      
+      // If we found matches with higher precision strategy, we can stop here
+      if (matchingMessages.length > 0 && i < 2) {
+        break;
+      }
+    }
+
+    // Sort matches by date (most recent first)
+    matchingMessages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    if (matchingMessages.length === 0) {
+      this.logger.warn(`No SMS match found for ${phoneNumber} (cleaned: ${cleanPhoneNumber}) in ${sortedData.length} records`);
+      
+      // Debug: Log first few API numbers for debugging
+      if (sortedData.length > 0) {
+        this.logger.info(`Sample API numbers: ${sortedData.slice(0, 5).map(sms => `${sms.number} (cleaned: ${sms.number.replace(/[^\d]/g, '')})`).join(', ')}`);
+      }
+    }
+    
+    return matchingMessages;
+  }
+
+  /**
+   * Find matching SMS in API response with time and efficiency optimization (kept for backward compatibility)
    */
   private findMatchingSms(smsData: SmsApiResponse[], phoneNumber: string): SmsApiResponse | null {
     // Clean phone number for comparison - remove all non-digits

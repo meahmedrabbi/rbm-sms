@@ -5,6 +5,7 @@ import { SmsService } from '../services/SmsService';
 import { PhoneNumberDetector } from '../services/PhoneNumberDetector';
 import { Logger } from '../utils/Logger';
 import { AuthMiddleware } from '../middleware/AuthMiddleware';
+import { MessageFormatter } from '../utils/MessageFormatter';
 
 /**
  * Controller for handling bot commands
@@ -268,35 +269,7 @@ Welcome to the full experience! 🚀`;
    */
   private async handleSmsCommand(msg: any, user: any, args: string[]): Promise<void> {
     if (args.length === 0) {
-      const helpMessage = `
-📱 **SMS Retrieval Service**
-
-**Usage:** \`/sms <phone_number>\`
-
-**Examples:**
-• \`/sms +1234567890\`
-• \`/sms 01712345678\` (Bangladesh)
-• \`/sms +8801712345678\`
-
-**Features:**
-• Instant SMS request processing
-• Automatic phone number detection
-• Multiple country format support
-• Real-time SMS delivery (30-120 seconds)
-• 10-minute expiry time
-
-**How it works:**
-1. Send phone number (via command or chat message)
-2. SMS request is processed immediately
-3. Wait for automatic SMS delivery
-4. Receive SMS content in chat
-
-**Cost:** $0.50 per SMS request
-**Status:** Type \`/mysms\` to check active requests
-
-💡 **Tip:** You can also just send a phone number directly in chat for instant processing!
-      `.trim();
-      
+      const helpMessage = MessageFormatter.formatSmsHelp();
       await this.bot.sendMessage(msg.chat.id, helpMessage, { parse_mode: 'Markdown' });
       return;
     }
@@ -305,18 +278,22 @@ Welcome to the full experience! 🚀`;
     const phoneNumbers = PhoneNumberDetector.detectPhoneNumbers(phoneNumberText);
 
     if (phoneNumbers.length === 0) {
-      await this.bot.sendMessage(msg.chat.id, '❌ Invalid phone number format. Please check and try again.\n\nExample: `/sms +1234567890`', { parse_mode: 'Markdown' });
+      const errorMessage = MessageFormatter.formatError('Invalid phone number format. Please check and try again.\n\nExample: `/sms +1234567890`');
+      await this.bot.sendMessage(msg.chat.id, errorMessage, { parse_mode: 'Markdown' });
       return;
     }
 
     if (phoneNumbers.length > 1) {
-      await this.bot.sendMessage(msg.chat.id, '❌ Please provide only one phone number at a time.');
+      const errorMessage = MessageFormatter.formatError('Please provide only one phone number at a time.');
+      await this.bot.sendMessage(msg.chat.id, errorMessage, { parse_mode: 'Markdown' });
       return;
     }
 
     // Check user balance (mock check)
     if (user.balance < 0.50) {
-      await this.bot.sendMessage(msg.chat.id, `💰 Insufficient balance for SMS service.\n\nYour balance: ${user.getFormattedBalance()}\nRequired: $0.50\n\nContact admin to add balance: ${this.authMiddleware.getAdminContact()}`);
+      const adminContact = this.authMiddleware.getAdminContact();
+      const balanceMessage = MessageFormatter.formatInsufficientBalance('$0.50', adminContact);
+      await this.bot.sendMessage(msg.chat.id, balanceMessage, { parse_mode: 'Markdown' });
       return;
     }
 
@@ -330,30 +307,15 @@ Welcome to the full experience! 🚀`;
       // Deduct balance (mock)
       // await this.userService.deductBalance(user.id, 0.50);
 
-      const successMessage = `
-✅ **SMS Request Initiated**
-
-📱 **Phone:** \`${formattedNumber}\`
-🏢 **Provider:** ${smsRequest.serviceProvider}
-⏰ **Expires in:** 10 minutes
-💰 **Cost:** $0.50
-
-🔄 **Status:** Waiting for SMS...
-
-You'll receive the SMS content automatically when it arrives (usually 30-120 seconds).
-
-**Commands:**
-• \`/mysms\` - Check active requests
-• Send another number to start new request
-      `.trim();
-
+      const successMessage = MessageFormatter.formatSmsInitiated(smsRequest);
       await this.bot.sendMessage(msg.chat.id, successMessage, { parse_mode: 'Markdown' });
       
       this.logger.info(`SMS requested by ${user.getDisplayName()} for ${formattedNumber}`);
 
     } catch (error) {
       this.logger.error('Error processing SMS request:', error);
-      await this.bot.sendMessage(msg.chat.id, '❌ Failed to process SMS request. Please try again.');
+      const errorMessage = MessageFormatter.formatError('Failed to process SMS request. Please try again.');
+      await this.bot.sendMessage(msg.chat.id, errorMessage, { parse_mode: 'Markdown' });
     }
   }
 
@@ -363,45 +325,13 @@ You'll receive the SMS content automatically when it arrives (usually 30-120 sec
   private async handleMySmsCommand(msg: any, user: any): Promise<void> {
     try {
       const activeRequests = await this.smsService.getUserActiveSmsRequests(user.id);
-
-      if (activeRequests.length === 0) {
-        const message = `
-📱 **Your SMS Requests**
-
-No active SMS requests found.
-
-**Start a new request:**
-• Send a phone number in chat
-• Use \`/sms <phone_number>\`
-
-**Examples:**
-• \`/sms +1234567890\`
-• Just type: \`+1234567890\`
-        `.trim();
-
-        await this.bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
-        return;
-      }
-
-      let message = `📱 **Your Active SMS Requests**\n\n`;
-      
-      activeRequests.forEach((request: any, index: number) => {
-        const timeLeft = Math.max(0, request.expiresAt.getTime() - Date.now());
-        const minutesLeft = Math.floor(timeLeft / 60000);
-        
-        message += `**${index + 1}.** \`${request.phoneNumber}\`\n`;
-        message += `   Status: ${this.getSmsStatusEmoji(request.status)} ${request.status.toUpperCase()}\n`;
-        message += `   Provider: ${request.serviceProvider}\n`;
-        message += `   Expires: ${minutesLeft} minutes\n\n`;
-      });
-
-      message += `💡 **Tip:** SMS usually arrives within 30-120 seconds`;
-
+      const message = MessageFormatter.formatUserSmsRequests(activeRequests);
       await this.bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
 
     } catch (error) {
       this.logger.error('Error getting user SMS requests:', error);
-      await this.bot.sendMessage(msg.chat.id, '❌ Error retrieving SMS requests.');
+      const errorMessage = MessageFormatter.formatError('Error retrieving SMS requests.');
+      await this.bot.sendMessage(msg.chat.id, errorMessage, { parse_mode: 'Markdown' });
     }
   }
 

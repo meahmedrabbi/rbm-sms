@@ -8,5 +8,5 @@ pkill -f "ts-node-dev.*src/index.ts" || pkill -f "node.*src/index.ts" || true
 sleep 3
 
 echo "Starting bot..."
-cd /root/rbm-sms-bot
+cd /home/ahmedrabbi/rbm-sms
 npm run dev
