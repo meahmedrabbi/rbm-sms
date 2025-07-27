@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { UserService } from '../services/UserService';
 import { MessageService } from '../services/MessageService';
 import { SmsService } from '../services/SmsService';
+import { NumberRequestService } from '../services/NumberRequestService';
 import { PhoneNumberDetector } from '../services/PhoneNumberDetector';
 import { Logger } from '../utils/Logger';
 import { AuthMiddleware } from '../middleware/AuthMiddleware';
@@ -14,6 +15,7 @@ export class CommandController {
   private logger = Logger.getInstance();
   private authMiddleware: AuthMiddleware;
   private smsService: SmsService;
+  private numberRequestService: NumberRequestService;
 
   constructor(
     private bot: TelegramBot,
@@ -22,6 +24,7 @@ export class CommandController {
   ) {
     this.authMiddleware = new AuthMiddleware(bot);
     this.smsService = new SmsService();
+    this.numberRequestService = new NumberRequestService();
   }
 
   /**
@@ -98,38 +101,49 @@ export class CommandController {
   private async handleStartCommand(msg: any, user: any): Promise<void> {
     const adminContact = this.authMiddleware.getAdminContact();
     
-    let welcomeMessage = `
-🎉 Welcome to the Bot, ${user.getDisplayName()}!
+    let welcomeMessage = `🎉 Welcome to the Bot, ${user.getDisplayName()}!\n\n`;
 
-Available commands:
-• /start - Show this welcome message
-• /info - View your account information
-`;
-
-    // Add additional commands for authorized users
+    // Add different messages based on authorization status
     if (user.isAuthorized && !user.isBanned) {
-      welcomeMessage += `• /balance - Check your account balance  
-• /profile - View your profile information
-• /sms <number> - Request SMS for phone number
-• /mysms - Check your SMS requests
-`;
+      welcomeMessage += `✅ **Account Status:** Authorized\n`;
+      welcomeMessage += `💎 **Balance:** ${user.getFormattedBalance()}\n\n`;
+      welcomeMessage += `🚀 **Available Services:**\n`;
+      welcomeMessage += `• 📱 Get phone numbers from 111+ countries\n`;
+      welcomeMessage += `• 💬 Receive SMS messages instantly\n`;
+      welcomeMessage += `• 📊 Track your requests and usage\n\n`;
+      welcomeMessage += `💡 **Quick Start:** Use the buttons below or send a phone number directly!`;
+
+      const keyboard = {
+        inline_keyboard: [
+          [
+            { text: '📱 Get Number', callback_data: 'get_number' },
+            { text: '📋 My Numbers', callback_data: 'my_numbers' }
+          ],
+          [
+            { text: '📊 Account Info', callback_data: 'account_info' },
+            { text: '💎 Balance', callback_data: 'check_balance' }
+          ]
+        ]
+      };
+
+      await this.bot.sendMessage(msg.chat.id, welcomeMessage.trim(), {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
+
     } else {
-      welcomeMessage += `
-⚠️ **Limited Access**: You need authorization for full access.
+      welcomeMessage += `⚠️ **Account Status:** ${user.isBanned ? 'Banned' : 'Unauthorized'}\n\n`;
+      welcomeMessage += `**Full Features Available After Authorization:**\n`;
+      welcomeMessage += `• 📱 Phone numbers from 111+ countries\n`;
+      welcomeMessage += `• 💬 SMS retrieval service\n`;
+      welcomeMessage += `• 📊 Balance management\n`;
+      welcomeMessage += `• 📋 Request tracking\n\n`;
+      welcomeMessage += `📞 **Contact Admin:** ${adminContact}`;
 
-**Full Features Include:**
-• SMS retrieval service
-• Balance management  
-• Profile access
-
-Contact admin: ${adminContact}
-`;
+      await this.bot.sendMessage(msg.chat.id, welcomeMessage.trim(), {
+        parse_mode: 'Markdown'
+      });
     }
-
-    welcomeMessage += `
-Let's get started! 🚀`;
-
-    await this.bot.sendMessage(msg.chat.id, welcomeMessage.trim());
   }
 
   /**
@@ -496,15 +510,15 @@ Usage: \`/savecookie <cookie_string> [expiry_days]\`
 ❓ Unknown command: /${command}
 
 Available commands:
-• /start - Show welcome message
+• /start - Show welcome message and menu buttons
 • /info - View your account information
 • /balance - Check your account balance (requires authorization)
 • /profile - View your profile information (requires authorization)
 • /sms <number> - Request SMS retrieval (requires authorization)
 • /mysms - Check SMS requests (requires authorization)
 
-💡 **Tip:** You can also send phone numbers directly in chat!
-    `.trim();
+💡 **Tip:** Use /start to access the button menu for number requests!
+    `;
 
     await this.bot.sendMessage(msg.chat.id, response);
   }
