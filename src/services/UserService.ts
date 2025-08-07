@@ -95,6 +95,18 @@ export class UserService {
   }
 
   /**
+   * Get user by internal ID
+   */
+  public async getUserById(userId: number): Promise<User | null> {
+    try {
+      return await User.findByPk(userId);
+    } catch (error) {
+      this.logger.error('Error getting user by ID:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update user active status
    */
   public async updateUserActiveStatus(userId: number, isActive: boolean): Promise<void> {

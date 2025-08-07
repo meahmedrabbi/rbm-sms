@@ -9,10 +9,10 @@ export class SmsService {
   private enhancedService = new EnhancedSmsService();
 
   /**
-   * Request SMS for a phone number (defaults to Server 1 for compatibility)
+   * Request SMS for a phone number (now defaults to Server 2 since Inbound SMS is not implemented)
    */
   public async requestSms(userId: number, phoneNumber: string, telegramMessageId?: number): Promise<SmsRequest> {
-    return this.enhancedService.requestSms(userId, phoneNumber, SmsServer.SERVER_1, telegramMessageId);
+    return this.enhancedService.requestSms(userId, phoneNumber, SmsServer.SERVER_2, telegramMessageId);
   }
 
   /**
@@ -23,10 +23,10 @@ export class SmsService {
   }
 
   /**
-   * Check SMS via API (defaults to Server 1 for compatibility)
+   * Check SMS via API (now defaults to Server 2 since Inbound SMS is not implemented)
    */
   public async checkSmsViaApi(phoneNumber: string): Promise<{ success: boolean; message: string; smsContent?: string; charged?: boolean }> {
-    return this.enhancedService.checkSmsViaApi(phoneNumber, SmsServer.SERVER_1);
+    return this.enhancedService.checkSmsViaApi(phoneNumber, SmsServer.SERVER_2);
   }
 
   /**

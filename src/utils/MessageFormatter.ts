@@ -60,15 +60,17 @@ export class MessageFormatter {
       `${this.SEPARATORS.main}\n\n` +
       `**Phone Number:** \`${formatted}\`\n\n` +
       `**Choose your preferred server:**\n\n` +
-      `${this.ICONS.fast} **Fast Server** - Instant mock responses\n` +
-      `${this.ICONS.real} **Real API** - Live SMS retrieval\n\n` +
+      `${this.ICONS.real} **Outbound SMS** - Live SMS retrieval\n` +
+      `${this.ICONS.fast} **Inbound SMS** - ⚠️ Not implemented yet\n\n` +
       `${this.SEPARATORS.sub}`;
     
     const keyboard = {
       inline_keyboard: [
         [
-          { text: `${this.ICONS.fast} Fast Server`, callback_data: `sms_server1_${phoneNumber}` },
-          { text: `${this.ICONS.real} Real API`, callback_data: `sms_server2_${phoneNumber}` }
+          { text: `${this.ICONS.real} Outbound SMS`, callback_data: `sms_server2_${phoneNumber}` }
+        ],
+        [
+          { text: `${this.ICONS.fast} Inbound SMS`, callback_data: `sms_server1_disabled_${phoneNumber}` }
         ],
         [
           { text: `${this.ICONS.cancel} Cancel`, callback_data: 'sms_cancel' }
@@ -84,7 +86,7 @@ export class MessageFormatter {
    */
   public static formatSmsProcessing(phoneNumber: string, server: SmsServer): string {
     const formatted = PhoneNumberDetector.formatPhoneNumber(phoneNumber);
-    const serverName = server === SmsServer.SERVER_1 ? 'Fast Server' : 'Real API';
+    const serverName = server === SmsServer.SERVER_1 ? 'Inbound SMS' : 'Outbound SMS';
     const serverIcon = server === SmsServer.SERVER_1 ? this.ICONS.fast : this.ICONS.real;
     
     return `${this.ICONS.loading} **Processing SMS Request**\n` +
@@ -105,7 +107,7 @@ export class MessageFormatter {
     userBalance?: string
   ): { text: string; keyboard: any } {
     const formatted = PhoneNumberDetector.formatPhoneNumber(phoneNumber);
-    const serverName = server === SmsServer.SERVER_1 ? 'Fast Server' : 'Real API';
+    const serverName = server === SmsServer.SERVER_1 ? 'Inbound SMS' : 'Outbound SMS';
     const serverIcon = server === SmsServer.SERVER_1 ? this.ICONS.fast : this.ICONS.real;
     const statusIcon = result.success ? this.ICONS.success : this.ICONS.warning;
     const timestamp = new Date().toLocaleTimeString('en-US', { 
@@ -339,9 +341,46 @@ export class MessageFormatter {
       `${this.SEPARATORS.sub}`;
   }
 
+  /**
+   * Format feature not implemented message
+   */
+  public static formatFeatureNotImplemented(featureName: string, phoneNumber: string): { text: string; keyboard: any } {
+    const formatted = PhoneNumberDetector.formatPhoneNumber(phoneNumber);
+    
+    const text = `${this.ICONS.warning} **Feature Not Available**\n` +
+      `${this.SEPARATORS.main}\n\n` +
+      `**${featureName}** functionality is not implemented yet.\n\n` +
+      `${this.ICONS.phone} **Phone:** \`${formatted}\`\n\n` +
+      `${this.ICONS.info} **Available Options:**\n` +
+      `${this.ICONS.real} Use **Outbound SMS** for live SMS retrieval\n\n` +
+      `${this.SEPARATORS.sub}`;
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: `${this.ICONS.real} Use Outbound SMS`, callback_data: `sms_server2_${phoneNumber}` }
+        ],
+        [
+          { text: `${this.ICONS.back} Back to Selection`, callback_data: `sms_back_${phoneNumber}` },
+          { text: `${this.ICONS.cancel} Cancel`, callback_data: 'sms_cancel' }
+        ]
+      ]
+    };
+
+    return { text, keyboard };
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // 🛠️ UTILITY METHODS
   // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Escape Markdown special characters in text to prevent parsing errors
+   */
+  private static escapeMarkdown(text: string): string {
+    // Escape only the most problematic Markdown characters that break parsing
+    return text.replace(/[*_\[\]`]/g, '\\$&');
+  }
 
   /**
    * Get status icon for SMS request status

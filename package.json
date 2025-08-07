@@ -5,8 +5,13 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "build:prod": "./build.sh",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "start": "node dist/index.js",
+    "start:prod": "./start-prod.sh",
+    "restart:dev": "./restart-bot.sh",
+    "restart:prod": "./restart-prod.sh",
+    "status": "./status.sh",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "db:migrate": "npx sequelize-cli db:migrate",

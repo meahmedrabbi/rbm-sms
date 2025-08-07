@@ -1,6 +1,7 @@
 import { Logger } from '../utils/Logger';
 import { UserService } from './UserService';
 import { CookieService } from './CookieService';
+import { MonitoringService } from './MonitoringService';
 
 /**
  * SMS Server options
@@ -52,12 +53,21 @@ export interface SmsRequest {
 }
 
 /**
+ * SMS API Response with metadata
+ */
+interface SmsApiResult {
+  content: string;
+  count: number;
+}
+
+/**
  * Enhanced SMS Service with real API integration
  */
 export class EnhancedSmsService {
   private logger = Logger.getInstance();
   private userService = new UserService();
   private cookieService = new CookieService();
+  private monitoringService = MonitoringService.getInstance();
   
   // In-memory store for SMS requests (in real implementation, use database)
   private activeSmsRequests = new Map<string, SmsRequest>();
@@ -66,7 +76,7 @@ export class EnhancedSmsService {
   private static readonly SMS_API_BASE_URL = 'https://beta.full-sms.com/api/edr_full_server';
   private static readonly SMS_DOMAIN = 'beta.full-sms.com';
   
-  // Mock SMS providers for Server 1 (fast process)
+  // Mock SMS providers for Server 1 (DISABLED - Inbound SMS not implemented)
   private static readonly SMS_PROVIDERS = [
     'server1-provider1.com',
     'server1-provider2.com', 
@@ -80,12 +90,18 @@ export class EnhancedSmsService {
     try {
       this.logger.info(`SMS requested for user ${userId}, phone: ${phoneNumber}, server: ${server}`);
       
+      // Check if Inbound SMS (SERVER_1) is being requested
+      if (server === SmsServer.SERVER_1) {
+        this.logger.warn(`Inbound SMS request denied for user ${userId} - feature not implemented`);
+        throw new Error('Inbound SMS functionality is not implemented yet. Please use Outbound SMS.');
+      }
+      
       // Create SMS request
       const smsRequest: SmsRequest = {
         userId,
         phoneNumber,
         server,
-        serviceProvider: server === SmsServer.SERVER_1 ? this.getRandomProvider() : 'beta.full-sms.com',
+        serviceProvider: 'beta.full-sms.com', // Only SERVER_2 is allowed now
         status: SmsStatus.PENDING,
         requestedAt: new Date(),
         expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
@@ -134,17 +150,22 @@ export class EnhancedSmsService {
         };
       }
 
-      let smsFromApi: string | null = null;
+      let smsResult: SmsApiResult | null = null;
 
       if (server === SmsServer.SERVER_1) {
-        // Mock API for fast processing
-        smsFromApi = await this.mockSmsProvider(phoneNumber);
+        // Inbound SMS functionality not implemented yet
+        this.logger.info(`Inbound SMS request denied for ${phoneNumber} - feature not implemented`);
+        return {
+          success: false,
+          message: '⚠️ Inbound SMS functionality is not implemented yet. Please use Outbound SMS.',
+          charged: false
+        };
       } else if (server === SmsServer.SERVER_2) {
         // Real API call
-        smsFromApi = await this.fetchSmsFromRealApi(phoneNumber);
+        smsResult = await this.fetchSmsFromRealApi(phoneNumber);
       }
       
-      if (smsFromApi) {
+      if (smsResult) {
         // SMS found! Process pay-on-delivery
         const balanceDeducted = await this.userService.deductBalance(
           smsRequest.userId, 
@@ -155,25 +176,36 @@ export class EnhancedSmsService {
         if (!balanceDeducted) {
           return {
             success: false,
-            message: `💰 SMS found but insufficient balance to complete payment. SMS: ${smsFromApi.substring(0, 50)}...`
+            message: `💰 SMS found but insufficient balance to complete payment. SMS: ${smsResult.content.substring(0, 50)}...`
           };
         }
 
         // Update request status
         smsRequest.status = SmsStatus.RECEIVED;
-        smsRequest.smsContent = smsFromApi;
+        smsRequest.smsContent = smsResult.content;
         smsRequest.receivedAt = new Date();
         smsRequest.updatedAt = new Date();
+
+        // Send monitoring notification
+        const user = await this.userService.getUserById(smsRequest.userId);
+        await this.monitoringService.logSmsRetrieval({
+          userId: smsRequest.userId,
+          username: user?.username || 'Unknown',
+          phoneNumber,
+          server: server.toString(),
+          smsCount: smsResult.count,
+          userBalance: user?.getFormattedBalance() || '$0.00',
+          timestamp: new Date()
+        });
 
         // Remove from active requests
         this.activeSmsRequests.delete(requestKey);
 
         this.logger.info(`SMS retrieved and balance deducted for user ${smsRequest.userId} via ${server}`);
-
         return {
           success: true,
           message: `✨ SMS received via ${server.toUpperCase()} and $0.50 charged`,
-          smsContent: smsFromApi,
+          smsContent: smsResult.content,
           charged: true
         };
 
@@ -198,7 +230,7 @@ export class EnhancedSmsService {
   /**
    * Fetch SMS from real API (Server 2)
    */
-  private async fetchSmsFromRealApi(phoneNumber: string): Promise<string | null> {
+  private async fetchSmsFromRealApi(phoneNumber: string): Promise<SmsApiResult | null> {
     try {
       // Get stored cookies
       const cookieString = await this.cookieService.getCookieString(EnhancedSmsService.SMS_DOMAIN);
@@ -254,7 +286,10 @@ export class EnhancedSmsService {
       
       if (matchingSmsMessages.length > 0) {
         this.logger.info(`${matchingSmsMessages.length} SMS found via real API for ${phoneNumber}`);
-        return this.formatMultipleSmsContent(matchingSmsMessages);
+        return {
+          content: this.formatMultipleSmsContent(matchingSmsMessages),
+          count: matchingSmsMessages.length
+        };
       } else {
         this.logger.info(`No matching SMS found via real API for ${phoneNumber}`);
         return null;
@@ -270,36 +305,43 @@ export class EnhancedSmsService {
   }
 
   /**
-   * Format SMS content for display
+   * Escape Markdown special characters in text
    */
-  private formatSmsContent(sms: SmsApiResponse): string {
-    return `📱 **From:** ${sms.sender}\n` +
-           `💬 **Message:** ${sms.text}\n` +
-           `📅 **Received:** ${sms.date}\n` +
-           `🌍 **Country:** ${sms.country}`;
+  private escapeMarkdown(text: string): string {
+    // Escape only the most problematic Markdown characters that break parsing
+    return text.replace(/[*_\[\]`]/g, '\\$&');
   }
 
   /**
-   * Format multiple SMS contents for display
+   * Format SMS content for display
+   */
+  private formatSmsContent(sms: SmsApiResponse): string {
+    return `📱 **From:** ${this.escapeMarkdown(sms.sender)}\n` +
+           `💬 **Message:** ${this.escapeMarkdown(sms.text)}\n` +
+           `📅 **Received:** ${this.escapeMarkdown(sms.date)}\n` +
+           `🌍 **Country:** ${this.escapeMarkdown(sms.country)}`;
+  }
+
+  /**
+   * Format multiple SMS contents for display - shows only the last message to prevent MESSAGE_TOO_LONG error
    */
   private formatMultipleSmsContent(smsMessages: SmsApiResponse[]): string {
-    if (smsMessages.length === 1) {
-      return this.formatSmsContent(smsMessages[0]);
+    if (smsMessages.length === 0) {
+      return 'No SMS messages found.';
     }
 
-    let content = `📱 **Found ${smsMessages.length} SMS Messages:**\n\n`;
+    // Always show only the last (most recent) message to prevent Telegram MESSAGE_TOO_LONG error
+    const lastMessage = smsMessages[0]; // Messages are already sorted by date descending
     
-    smsMessages.forEach((sms, index) => {
-      content += `**Message ${index + 1}:**\n`;
-      content += `📱 **From:** ${sms.sender}\n`;
-      content += `💬 **Message:** ${sms.text}\n`;
-      content += `📅 **Received:** ${sms.date}\n`;
-      content += `🌍 **Country:** ${sms.country}`;
-      
-      if (index < smsMessages.length - 1) {
-        content += '\n\n─────────────────────\n\n';
-      }
-    });
+    let content = `**Latest SMS Message (${smsMessages.length} total found):**\n\n`;
+    content += `**From:** ${this.escapeMarkdown(lastMessage.sender)}\n`;
+    content += `**Message:** ${this.escapeMarkdown(lastMessage.text)}\n`;
+    content += `**Received:** ${this.escapeMarkdown(lastMessage.date)}\n`;
+    content += `**Country:** ${this.escapeMarkdown(lastMessage.country)}`;
+    
+    if (smsMessages.length > 1) {
+      content += `\n\n**Note:** Showing latest of ${smsMessages.length} messages to prevent message length limit.`;
+    }
     
     return content;
   }
@@ -530,8 +572,10 @@ export class EnhancedSmsService {
   }
 
   /**
-   * Mock SMS provider for Server 1 (fast process)
+   * Mock SMS provider for Server 1 (fast process) - DISABLED
+   * This functionality has been removed as Inbound SMS is not implemented yet
    */
+  /*
   private async mockSmsProvider(phoneNumber: string): Promise<string | null> {
     try {
       // Simulate 50% chance of having SMS for demo
@@ -551,6 +595,7 @@ export class EnhancedSmsService {
       return null;
     }
   }
+  */
 
   /**
    * Save authentication cookies for API access

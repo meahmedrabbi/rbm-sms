@@ -8,6 +8,7 @@ export interface IConfig {
   };
   telegram: {
     botToken: string;
+    monitoringChannelId?: string; // Optional monitoring channel for SMS retrieval logs
   };
   database: {
     host: string;
@@ -69,6 +70,7 @@ export class Config {
       },
       telegram: {
         botToken: process.env.TELEGRAM_BOT_TOKEN!,
+        monitoringChannelId: process.env.TELEGRAM_MONITORING_CHANNEL_ID,
       },
       database: {
         host: process.env.DB_HOST!,

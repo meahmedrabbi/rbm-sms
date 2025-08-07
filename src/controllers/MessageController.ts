@@ -196,6 +196,20 @@ export class MessageController {
       }
 
       if (data.startsWith('sms_server1_') || data.startsWith('sms_server2_')) {
+        // Check if it's the disabled server1 button
+        if (data.startsWith('sms_server1_disabled_')) {
+          const phoneNumber = data.replace(/^sms_server1_disabled_/, '');
+          const { text, keyboard } = MessageFormatter.formatFeatureNotImplemented('Inbound SMS', phoneNumber);
+          
+          await this.bot.editMessageText(text, {
+            chat_id: msg.chat.id,
+            message_id: msg.message_id,
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+          });
+          return;
+        }
+        
         const server = data.startsWith('sms_server1_') ? SmsServer.SERVER_1 : SmsServer.SERVER_2;
         const phoneNumber = data.replace(/^sms_server[12]_/, '');
         

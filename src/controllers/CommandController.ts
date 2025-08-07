@@ -455,7 +455,7 @@ Usage: \`/savecookie <cookie_string> [expiry_days]\`
 3. Go to Application/Storage > Cookies
 4. Copy the cookie values
 
-**Note:** Cookies are used for Server 2 (Real API) SMS retrieval.`, { parse_mode: 'Markdown' });
+**Note:** Cookies are used for Server 2 (Outbound SMS) SMS retrieval.`, { parse_mode: 'Markdown' });
       return;
     }
 
@@ -483,7 +483,7 @@ Usage: \`/savecookie <cookie_string> [expiry_days]\`
 **Details:**
 • Domain: beta.full-sms.com
 • Expires: ${expiresAt.toLocaleDateString()} (${expiryDays} days)
-• Status: Ready for Server 2 (Real API)
+• Status: Ready for Server 2 (Outbound SMS)
 
 **What's Next:**
 • Server 2 will now use these cookies for API authentication
